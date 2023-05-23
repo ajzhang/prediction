@@ -1,0 +1,149 @@
+---
+title: Predicting Analysis Performance using Accelerometer Data
+output:
+  html_document:
+    toc: true
+    toc_float: true
+date: "2023-05-18"
+---
+
+
+## 1. Introduction
+The quantified self movement has enabled the collection of vast amounts of personal activity data through wearable devices such as Jawbone Up, Nike FuelBand, and Fitbit. While people often quantify the amount of activity they engage in, they rarely measure the quality or effectiveness of their performance. In this project, our goal is to utilize accelerometer data from the belt, forearm, arm, and dumbbell of 6 participants to predict the manner in which they perform barbell lifts.
+
+## 2. Project Goal
+The goal of this project will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+## 3. Data Source
+The data is sourced from the Weight Lifting Exercise Dataset provided by the Human Activity Recognition (HAR) group at PUC-Rio. We express our gratitude to the HAR group for generously allowing the use of their data for this project. Please cite them if you use this document for any purpose.
+
+[***The training data***](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+[***The test data***](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+
+## 4. Data Loading, Exploration and Preprocessing
+
+### 4.1 Library loading for this project
+```{r library loading}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+```
+
+### 4.2 Data Loading
+```{r data loading}
+TrainData <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+TestData <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+```
+
+
+### 4.3 Data Exploration and Preprocessing
+*show data set dimension*
+```{r data exploratory}
+dim(TrainData)
+dim(TestData)
+```
+The training data contains 19622 observations and 160 variables, test data contains 20 observations and 160 variables. 
+
+
+*remove the column with more than 70% NAs or empty*
+```{r clean datset}
+TrainClean <- TrainData[, colMeans(is.na(TrainData)|TrainData=="")<0.7]
+TestClean <- TestData[, colMeans(is.na(TestData)|TestData=="")<0.7]
+```
+
+After data cleaning, the training data contains 19622 observations and 93 variables, test data contains 20 observations and 60 variables. 
+
+*remove the redundant variables*
+```{r remove variables}
+TrainClean<-TrainClean[,-c(1:7)]
+TestClean<-TestClean[,-c(1:7)]
+TrainClean$classe<-factor(TrainClean$classe)
+```
+
+Remove the first 7 variables from both data sets, which don't contribute much to the modeling.The "classe" in the training set is the outcome to predict.Covert "classe" into factor.
+
+
+### 5. Partition the training set into training and validation sets.
+
+
+```{r preprocess}
+preproc <- preProcess(TrainClean, method = c("center", "scale"))
+TrainClean <- predict(preproc, TrainClean)
+TestClean <- predict(preproc, TestClean)
+```
+
+
+*split training and validation sets*
+```{r split traing and validation sets}
+set.seed(888)
+foo <- createDataPartition(TrainClean$classe, p=0.70, list=FALSE)
+forTrain <- TrainClean[foo, ]
+forVali <- TrainClean[-foo, ]
+```
+We randomly split the training data into 70% for training and 30% for validation sets to evaluate the model's performance and tune hyperparameters, ensuring the model does not overfit the training data. we set.seed here to ensure the analysis can be reproduced.
+
+## 6. Model Building
+
+### 6.1 Train Random Forest (RF) Model and validation
+
+We train the RF model with the preprocessed forTrain data set.  
+```{r modelingRF, cache = T, , results='hide'}
+controlRF <- trainControl(method="cv", number=5)
+tuneG<-expand.grid(mtry = c(4, 8))
+modelRF <- train(classe ~ ., data=forTrain, method="rf", trControl=controlRF, tuneGrid=tuneG)
+modelRF # result hidden
+```
+
+
+Then, we estimate the performance of the model on the validation data set.  
+```{r validationRF, cache = T}
+predictRF <- predict(modelRF, forVali)
+confusionMatrix(forVali$classe, predictRF)
+ImpoVar<-varImp(modelRF)
+plot(ImpoVar, top=10, main="The Importance of Predictor Variables")
+```
+
+So, after training and validation, we obtained an optimized model with satisfactory performance metrics. The overall accuracy of the model is 99.6%, the No Information Rate is 28.5%. The model demonstrated good accuracy. 
+
+
+
+### 6.2 Train Decision Tree (DT) Model and Validation
+
+We train the DT model with the preprocessed forTrain data set.
+```{r modelingDT, cache = T, results='hide'}
+modelDT <- rpart(classe ~ ., data=forTrain, method="class")
+modelDT # result hidden
+```
+
+Then, we estimate the performance of the model on the validation data set.
+```{r validationDT, cache = T}
+predictDT <- predict(modelDT, forVali, type = "class")
+confusionMatrix(predictDT, forVali$classe)
+prp(modelDT,extra=100, box.palette="auto", main="Decision Tree")
+```
+
+We obtained an optimized model with satisfactory performance metrics. The overall accuracy of the model is 70.8%, the No Information Rate 28.5%. The model demonstrated acceptable accuracy.
+
+*The RF model* has better performance compared with DT model, and has the ability to predict exercise performance based on accelerometer data.
+
+
+
+## 7. Predicting for Test Data Set with random forest model
+
+We apply our trained model to predict the manner in which 20 test data set. 
+
+```{r, cache = T}
+predictResult <- predict(modelRF, TestClean[, -length(names(TestClean))])
+predictResult
+```  
+## 8. Conclusion
+In conclusion, this project aimed to predict exercise performance based on accelerometer data. It turned out the random forest model is the good model for prediciting the manner in which they did the exercise.
+
+
+ 
+ 
+-END-
